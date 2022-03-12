@@ -76,7 +76,7 @@ func run() (err error) {
 	nkfa := nk.NewFontAtlas()
 	defer nkfa.Free()
 	nkfa.Begin()
-	defaultFont := nkfa.AddDefaultFont(12)
+	defaultFont := nkfa.AddDefaultFont(14)
 	image, width, height := nkfa.Bake(nk.FontAtlasRGBA32)
 	fmt.Println("baked image width =", width, "height =", height)
 	sdlFontTex, err = renderer.CreateTexture(sdl.PIXELFORMAT_ARGB8888, sdl.TEXTUREACCESS_STATIC, width, height)
@@ -120,6 +120,8 @@ func run() (err error) {
 	defer ebuf.Free()
 	vbuf = nk.NewBuffer()
 	defer vbuf.Free()
+
+	checked := false
 outer:
 	for {
 		nkc.InputBegin()
@@ -139,6 +141,8 @@ outer:
 		if nkc.ButtonText("Button") {
 			fmt.Println("button pressed")
 		}
+		nkc.LayoutRowStatic(30, 80, 1)
+		checked = nkc.CheckText("Check me", checked)
 		nkc.End()
 
 		if err = renderer.SetDrawColor(25, 45, 61, 255); err != nil {
@@ -155,11 +159,9 @@ outer:
 			return fmt.Errorf("convert error: %w", err)
 		}
 		ebufMem := ebuf.Memory()
-		rawIndices := reinterpretSlice[uint16](ebufMem, 2) // uint16 == nk_draw_index
-		indices := make([]int32, len(rawIndices))
-		for i := range rawIndices {
-			indices[i] = int32(rawIndices[i])
-		}
+		// technically nk_draw_index is uint32 but it's unlikely to ever use
+		// the high bit
+		indices := reinterpretSlice[int32](ebufMem, 4)
 		oldClipRect := renderer.GetClipRect()
 		var err error
 		nkc.DrawForEach(cbuf, func(cmd *nk.DrawCommand) (ok bool) {
