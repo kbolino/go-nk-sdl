@@ -48,7 +48,10 @@ func run() (err error) {
 	}
 	defer sdl.Quit()
 
-	window, err = sdl.CreateWindow("go-nk-sdl demo", sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED, 800, 600, 0)
+	sdl.SetHint(sdl.HINT_VIDEO_HIGHDPI_DISABLED, "0")
+
+	window, err = sdl.CreateWindow("go-nk-sdl demo", sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED, 800, 600,
+		sdl.WINDOW_ALLOW_HIGHDPI)
 	if err != nil {
 		return fmt.Errorf("creating window: %w", err)
 	}
@@ -67,6 +70,21 @@ func run() (err error) {
 			err = fmt.Errorf("destroying renderer: %w", err2)
 		}
 	}()
+
+	renderScale := int32(1)
+	if renderW, renderH, err := renderer.GetOutputSize(); err != nil {
+		return fmt.Errorf("getting renderer output size: %w", err)
+	} else {
+		windowW, windowH := window.GetSize()
+		horizScale := renderW / windowW
+		vertScale := renderH / windowH
+		if horizScale != vertScale {
+			return fmt.Errorf("render output is not scaled uniformly: renderer (%d x %d), window (%d x %d)",
+				renderW, renderH, windowW, windowH)
+		}
+		renderScale = horizScale
+	}
+	renderScaleF := float32(renderScale)
 
 	if nkc, err = nk.NewContext(); err != nil {
 		return fmt.Errorf("initializing nuklear: %w", err)
@@ -126,7 +144,7 @@ outer:
 	for {
 		nkc.InputBegin()
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
-			if quit := convertEvent(nkc, event); quit {
+			if quit := convertEvent(nkc, event, renderScale); quit {
 				break outer
 			}
 		}
@@ -135,13 +153,16 @@ outer:
 		// if (nk_begin(ctx, "Demo", nk_rect(50, 50, 230, 250),
 		//     NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_SCALABLE|
 		//     NK_WINDOW_MINIMIZABLE|NK_WINDOW_TITLE))
-		nkc.Begin("Demo", &nk.Rect{X: 50, Y: 50, W: 230, H: 250},
-			nk.WindowBorder|nk.WindowMovable|nk.WindowScalable|nk.WindowMinimizable|nk.WindowTitle)
-		nkc.LayoutRowStatic(30, 81, 1)
+		nkc.Begin("Demo",
+			&nk.Rect{X: renderScaleF * 50, Y: renderScaleF * 50,
+				W: renderScaleF * 230, H: renderScaleF * 250},
+			nk.WindowBorder|nk.WindowMovable|nk.WindowScalable|nk.WindowMinimizable|nk.WindowTitle,
+		)
+		nkc.LayoutRowStatic(renderScaleF*30, renderScale*81, 1)
 		if nkc.ButtonText("Button") {
 			fmt.Println("button pressed")
 		}
-		nkc.LayoutRowStatic(30, 80, 1)
+		nkc.LayoutRowStatic(renderScaleF*30, renderScale*80, 1)
 		checked = nkc.CheckText("Check me", checked)
 		nkc.End()
 
@@ -223,13 +244,15 @@ outer:
 	return nil
 }
 
-func convertEvent(nkc *nk.Context, event sdl.Event) (quit bool) {
+func convertEvent(nkc *nk.Context, event sdl.Event, scale int32) (quit bool) {
+	window.GetWMInfo()
 	switch e := event.(type) {
 	case *sdl.QuitEvent:
 		return true
 	case *sdl.MouseMotionEvent:
-		nkc.InputMotion(e.X, e.Y)
+		nkc.InputMotion(scale*e.X, scale*e.Y)
 	case *sdl.MouseButtonEvent:
+		x, y := scale*e.X, scale*e.Y
 		down := false
 		if e.State == sdl.PRESSED {
 			down = true
@@ -237,15 +260,16 @@ func convertEvent(nkc *nk.Context, event sdl.Event) (quit bool) {
 		switch e.Button {
 		case sdl.BUTTON_LEFT:
 			if e.Clicks == 2 {
-				nkc.InputButton(nk.ButtonDouble, e.X, e.Y, down)
+				nkc.InputButton(nk.ButtonDouble, x, y, down)
 			}
-			nkc.InputButton(nk.ButtonLeft, e.X, e.Y, down)
+			nkc.InputButton(nk.ButtonLeft, x, y, down)
 		case sdl.BUTTON_RIGHT:
-			nkc.InputButton(nk.ButtonRight, e.X, e.Y, down)
+			nkc.InputButton(nk.ButtonRight, x, y, down)
 		case sdl.BUTTON_MIDDLE:
-			nkc.InputButton(nk.ButtonMiddle, e.X, e.Y, down)
+			nkc.InputButton(nk.ButtonMiddle, x, y, down)
 		}
 	case *sdl.MouseWheelEvent:
+		// TODO scale scroll or no?
 		nkc.InputScroll(e.PreciseX, e.PreciseY)
 	case *sdl.KeyboardEvent:
 		var down bool
