@@ -22,7 +22,10 @@ const (
 	aa           = nk.AntiAliasingOn
 )
 
-var flagHiDPI = flag.Bool("hiDPI", false, "enable high-DPI display support")
+var (
+	flagHiDPI = flag.Bool("hiDPI", false, "enable high-DPI display support")
+	flagVsync = flag.Bool("vsync", false, "enable sync on vertical blank (VSYNC)")
+)
 
 var (
 	window     *sdl.Window
@@ -72,7 +75,11 @@ func run() (err error) {
 		}
 	}()
 
-	renderer, err = sdl.CreateRenderer(window, -1, 0)
+	rendererFlags := uint32(0)
+	if *flagVsync {
+		rendererFlags = sdl.RENDERER_PRESENTVSYNC
+	}
+	renderer, err = sdl.CreateRenderer(window, -1, rendererFlags)
 	if err != nil {
 		return fmt.Errorf("creating renderer: %w", err)
 	}
