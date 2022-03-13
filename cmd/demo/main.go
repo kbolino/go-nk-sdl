@@ -23,6 +23,7 @@ const (
 )
 
 var (
+	flagFont  = flag.String("font", "", "load font from file path (otherwise use built-in font)")
 	flagHiDPI = flag.Bool("hiDPI", false, "enable high-DPI display support")
 	flagVsync = flag.Bool("vsync", false, "enable sync on vertical blank (VSYNC)")
 )
@@ -129,7 +130,15 @@ func run() (err error) {
 			OversampleV: 1,
 		}.Build()
 	}
-	defaultFont := nkfa.AddDefaultFont(14, fontConfig)
+	var font *nk.Font
+	if fontFile := *flagFont; fontFile == "" {
+		font = nkfa.AddDefaultFont(14, fontConfig)
+	} else {
+		font, err = nkfa.AddFromFile(fontFile, 14, fontConfig)
+		if err != nil {
+			return fmt.Errorf("loading font from file: %w", err)
+		}
+	}
 
 	image, width, height := nkfa.Bake(nk.FontAtlasRGBA32)
 	if image == nil {
@@ -153,8 +162,8 @@ func run() (err error) {
 		return fmt.Errorf("setting texture blend mode: %w", err)
 	}
 	drawNullTex := nkfa.End(nk.Handle(unsafe.Pointer(sdlFontTex)))
-	nkc.StyleSetFont(defaultFont.Handle())
-	//nkfa.Cleanup()
+	nkc.StyleSetFont(font.Handle())
+	nkfa.Cleanup()
 
 	configBuilder := nk.ConvertConfigBuilder{
 		CConvertConfig: nk.CConvertConfig{
