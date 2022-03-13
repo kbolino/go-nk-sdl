@@ -202,9 +202,6 @@ outer:
 		}
 		nkc.InputEnd()
 
-		// if (nk_begin(ctx, "Demo", nk_rect(50, 50, 230, 250),
-		//     NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_SCALABLE|
-		//     NK_WINDOW_MINIMIZABLE|NK_WINDOW_TITLE))
 		if nkc.Begin("Demo",
 			&nk.Rect{X: 50, Y: 50, W: 230, H: 250},
 			nk.WindowBorder|nk.WindowMovable|nk.WindowScalable|nk.WindowMinimizable|nk.WindowTitle,
@@ -228,52 +225,42 @@ outer:
 		cbuf.Clear()
 		ebuf.Clear()
 		vbuf.Clear()
+
 		if err := nkc.Convert(cbuf, vbuf, ebuf, config); err != nil {
 			return fmt.Errorf("convert error: %w", err)
 		}
+
 		ebufMem := ebuf.Memory()
 		// technically nk_draw_index is uint32 but it's unlikely to ever use
 		// the high bit
 		indices := reinterpretSlice[int32](ebufMem, 4)
+		vbufMem := vbuf.Memory()
+		vertices := reinterpretSlice[sdl.Vertex](vbufMem, sizeofVertex)
+
 		oldClipRect := renderer.GetClipRect()
+
 		nkc.DrawForEach(cbuf, func(cmd *nk.DrawCommand) (ok bool) {
 			if cmd.ElemCount == 0 {
 				return true
 			}
-			rect := sdl.Rect{
+
+			clipRect := sdl.Rect{
 				X: int32(cmd.ClipRect.X),
 				Y: int32(cmd.ClipRect.Y),
 				W: int32(cmd.ClipRect.W),
 				H: int32(cmd.ClipRect.H),
 			}
-			if err = renderer.SetClipRect(&rect); err != nil {
+			if err = renderer.SetClipRect(&clipRect); err != nil {
 				err = fmt.Errorf("setting renderer clip rectangle: %w", err)
 				return false
 			}
 
-			vbufMem := vbuf.Memory()
-			vertices := reinterpretSlice[sdl.Vertex](vbufMem, sizeofVertex)
-			err = renderer.RenderGeometry(
-				(*sdl.Texture)(unsafe.Pointer(cmd.Texture)),
-				vertices,
-				indices[:cmd.ElemCount],
-			)
-			// vbufVertices := vbufMem[byteOffsetVertex:]
-			// vbufColors := vbufMem[byteOffsetColor:]
-			// vbufUVs := vbufMem[byteOffsetUV:]
-			// err = RenderGeometryRaw(
-			// 	renderer,
-			// 	(*sdl.Texture)(unsafe.Pointer(cmd.Texture)),
-			// 	unsafe.Pointer(&vbufVertices[0]), byteSizeVertex,
-			// 	unsafe.Pointer(&vbufColors[0]), byteSizeVertex,
-			// 	unsafe.Pointer(&vbufUVs[0]), byteSizeVertex,
-			// 	int32(numVertices),
-			// 	unsafe.Pointer(&ebufMem[ebufOffset]), int32(cmd.ElemCount), 2,
-			// )
-			if err != nil {
+			texture := (*sdl.Texture)(unsafe.Pointer(cmd.Texture))
+			if err = renderer.RenderGeometry(texture, vertices, indices[:cmd.ElemCount]); err != nil {
 				err = fmt.Errorf("rendering raw geometry: %w", err)
 				return false
 			}
+
 			indices = indices[cmd.ElemCount:]
 			return true
 		})
