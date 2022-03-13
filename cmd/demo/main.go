@@ -1,7 +1,9 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"math"
 	"os"
 	"runtime"
 	"unsafe"
@@ -20,6 +22,8 @@ const (
 	aa           = nk.AntiAliasingOn
 )
 
+var flagHiDPI = flag.Bool("hiDPI", false, "enable high-DPI display support")
+
 var (
 	window     *sdl.Window
 	renderer   *sdl.Renderer
@@ -36,6 +40,7 @@ func init() {
 }
 
 func main() {
+	flag.Parse()
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "ERROR:", err)
 		os.Exit(1)
@@ -43,15 +48,21 @@ func main() {
 }
 
 func run() (err error) {
+	sdl.LogSetAllPriority(sdl.LOG_PRIORITY_DEBUG)
+
 	if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
 		return fmt.Errorf("initializing SDL: %w", err)
 	}
 	defer sdl.Quit()
 
-	sdl.SetHint(sdl.HINT_VIDEO_HIGHDPI_DISABLED, "0")
+	addSDLHints() // platform-specific call
 
-	window, err = sdl.CreateWindow("go-nk-sdl demo", sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED, 800, 600,
-		sdl.WINDOW_ALLOW_HIGHDPI)
+	windowFlags := uint32(0)
+	if *flagHiDPI {
+		sdl.SetHint(sdl.HINT_VIDEO_HIGHDPI_DISABLED, "0")
+		windowFlags |= sdl.WINDOW_ALLOW_HIGHDPI
+	}
+	window, err = sdl.CreateWindow("go-nk-sdl demo", sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED, 800, 600, windowFlags)
 	if err != nil {
 		return fmt.Errorf("creating window: %w", err)
 	}
@@ -71,20 +82,16 @@ func run() (err error) {
 		}
 	}()
 
-	renderScale := int32(1)
-	if renderW, renderH, err := renderer.GetOutputSize(); err != nil {
-		return fmt.Errorf("getting renderer output size: %w", err)
-	} else {
-		windowW, windowH := window.GetSize()
-		horizScale := renderW / windowW
-		vertScale := renderH / windowH
-		if horizScale != vertScale {
-			return fmt.Errorf("render output is not scaled uniformly: renderer (%d x %d), window (%d x %d)",
-				renderW, renderH, windowW, windowH)
+	if *flagHiDPI {
+		if renderW, renderH, err := renderer.GetOutputSize(); err != nil {
+			return fmt.Errorf("getting renderer output size: %w", err)
+		} else {
+			windowW, windowH := window.GetSize()
+			renderScaleX := float32(renderW) / float32(windowW)
+			renderScaleY := float32(renderH) / float32(windowH)
+			renderer.SetScale(renderScaleX, renderScaleY)
 		}
-		renderScale = horizScale
 	}
-	renderScaleF := float32(renderScale)
 
 	if nkc, err = nk.NewContext(); err != nil {
 		return fmt.Errorf("initializing nuklear: %w", err)
@@ -94,13 +101,44 @@ func run() (err error) {
 	nkfa := nk.NewFontAtlas()
 	defer nkfa.Free()
 	nkfa.Begin()
-	defaultFont := nkfa.AddDefaultFont(14)
+
+	var fontConfig *nk.FontConfig
+	defer fontConfig.Free() // nil-safe call
+	if *flagHiDPI {
+		_, fontScale := renderer.GetScale()
+		oversample := uint8(math.Ceil(float64(fontScale)))
+		if oversample > 4 {
+			oversample = 4
+		}
+		fontConfig = nk.FontConfigBuilder{
+			OversampleH: oversample,
+			OversampleV: oversample,
+		}.Build()
+
+	} else {
+		fontConfig = nk.FontConfigBuilder{
+			PixelSnap:   true,
+			OversampleH: 1,
+			OversampleV: 1,
+		}.Build()
+	}
+	defaultFont := nkfa.AddDefaultFont(14, fontConfig)
+
 	image, width, height := nkfa.Bake(nk.FontAtlasRGBA32)
+	if image == nil {
+		return fmt.Errorf("FontAtlas.Bake returned nil")
+	}
 	fmt.Println("baked image width =", width, "height =", height)
+
 	sdlFontTex, err = renderer.CreateTexture(sdl.PIXELFORMAT_ARGB8888, sdl.TEXTUREACCESS_STATIC, width, height)
 	if err != nil {
 		return fmt.Errorf("creating font texture; %w", err)
 	}
+	defer func() {
+		if err2 := sdlFontTex.Destroy(); err2 != nil && err == nil {
+			err = fmt.Errorf("destroying font texture: %w", err2)
+		}
+	}()
 	if err = sdlFontTex.Update(nil, image, int(4*width)); err != nil {
 		return fmt.Errorf("uploading font atlas to texture: %w", err)
 	}
@@ -144,7 +182,7 @@ outer:
 	for {
 		nkc.InputBegin()
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
-			if quit := convertEvent(nkc, event, renderScale); quit {
+			if quit := convertEvent(nkc, event); quit {
 				break outer
 			}
 		}
@@ -153,17 +191,17 @@ outer:
 		// if (nk_begin(ctx, "Demo", nk_rect(50, 50, 230, 250),
 		//     NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_SCALABLE|
 		//     NK_WINDOW_MINIMIZABLE|NK_WINDOW_TITLE))
-		nkc.Begin("Demo",
-			&nk.Rect{X: renderScaleF * 50, Y: renderScaleF * 50,
-				W: renderScaleF * 230, H: renderScaleF * 250},
+		if nkc.Begin("Demo",
+			&nk.Rect{X: 50, Y: 50, W: 230, H: 250},
 			nk.WindowBorder|nk.WindowMovable|nk.WindowScalable|nk.WindowMinimizable|nk.WindowTitle,
-		)
-		nkc.LayoutRowStatic(renderScaleF*30, renderScale*81, 1)
-		if nkc.ButtonText("Button") {
-			fmt.Println("button pressed")
+		) {
+			nkc.LayoutRowStatic(30, 81, 1)
+			if nkc.ButtonText("Button") {
+				fmt.Println("button pressed")
+			}
+			nkc.LayoutRowStatic(30, 80, 1)
+			checked = nkc.CheckText("Check me", checked)
 		}
-		nkc.LayoutRowStatic(renderScaleF*30, renderScale*80, 1)
-		checked = nkc.CheckText("Check me", checked)
 		nkc.End()
 
 		if err = renderer.SetDrawColor(25, 45, 61, 255); err != nil {
@@ -184,7 +222,6 @@ outer:
 		// the high bit
 		indices := reinterpretSlice[int32](ebufMem, 4)
 		oldClipRect := renderer.GetClipRect()
-		var err error
 		nkc.DrawForEach(cbuf, func(cmd *nk.DrawCommand) (ok bool) {
 			if cmd.ElemCount == 0 {
 				return true
@@ -244,15 +281,16 @@ outer:
 	return nil
 }
 
-func convertEvent(nkc *nk.Context, event sdl.Event, scale int32) (quit bool) {
+func convertEvent(nkc *nk.Context, event sdl.Event) (quit bool) {
 	window.GetWMInfo()
 	switch e := event.(type) {
 	case *sdl.QuitEvent:
 		return true
 	case *sdl.MouseMotionEvent:
-		nkc.InputMotion(scale*e.X, scale*e.Y)
+		x, y := e.X, e.Y
+		nkc.InputMotion(x, y)
 	case *sdl.MouseButtonEvent:
-		x, y := scale*e.X, scale*e.Y
+		x, y := e.X, e.Y
 		down := false
 		if e.State == sdl.PRESSED {
 			down = true
@@ -269,7 +307,6 @@ func convertEvent(nkc *nk.Context, event sdl.Event, scale int32) (quit bool) {
 			nkc.InputButton(nk.ButtonMiddle, x, y, down)
 		}
 	case *sdl.MouseWheelEvent:
-		// TODO scale scroll or no?
 		nkc.InputScroll(e.PreciseX, e.PreciseY)
 	case *sdl.KeyboardEvent:
 		var down bool
