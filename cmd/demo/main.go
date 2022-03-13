@@ -14,6 +14,7 @@ import (
 
 const (
 	sizeofVertex           = 20 // sizeof(sdl.Vertex)
+	alignofVertex          = 4  // alignof(sdl.Vertex)
 	offsetofVertexPosition = 0  // offsetof(sdl.Vertex, Position)
 	offsetofVertexColor    = 8  // offsetof(sdl.Vertex, Color)
 	offsetofVertexTexCoord = 12 // offsetof(sdl.Vertex, TexCoord)
@@ -165,25 +166,22 @@ func run() (err error) {
 	nkc.StyleSetFont(font.Handle())
 	nkfa.Cleanup()
 
-	configBuilder := nk.ConvertConfigBuilder{
-		CConvertConfig: nk.CConvertConfig{
-			VertexSize:         sizeofVertex,
-			VertexAlignment:    4, // alignof(sdl.Vertex)
-			Null:               drawNullTex,
-			CircleSegmentCount: segmentCount,
-			CurveSegmentCount:  segmentCount,
-			ArcSegmentCount:    segmentCount,
-			GlobalAlpha:        1.0,
-			ShapeAA:            aa,
-			LineAA:             aa,
-		},
+	config := nk.ConvertConfigBuilder{
+		Null:               drawNullTex,
+		CircleSegmentCount: segmentCount,
+		CurveSegmentCount:  segmentCount,
+		ArcSegmentCount:    segmentCount,
+		GlobalAlpha:        1.0,
+		ShapeAA:            aa,
+		LineAA:             aa,
 		VertexLayout: []nk.DrawVertexLayoutElement{
 			{Attribute: nk.VertexPosition, Format: nk.FormatFloat, Offset: offsetofVertexPosition},
 			{Attribute: nk.VertexColor, Format: nk.FormatR8G8B8A8, Offset: offsetofVertexColor},
 			{Attribute: nk.VertexTexcoord, Format: nk.FormatFloat, Offset: offsetofVertexTexCoord},
 		},
-	}
-	config = configBuilder.Build()
+		VertexSize:      sizeofVertex,
+		VertexAlignment: alignofVertex,
+	}.Build()
 	defer config.Free()
 
 	cbuf = nk.NewBuffer()
