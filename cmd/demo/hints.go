@@ -1,7 +1,7 @@
-//go:build !darwin
+//go:build !darwin && !windows
 
 package main
 
 func addSDLHints() {
-	// no hints outside of MacOS
+	// default hints
 }
