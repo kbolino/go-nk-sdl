@@ -60,8 +60,6 @@ func run() (err error) {
 	}
 	defer sdl.Quit()
 
-	addSDLHints() // platform-specific call
-
 	windowFlags := uint32(0)
 	if *flagHiDPI {
 		sdl.SetHint(sdl.HINT_VIDEO_HIGHDPI_DISABLED, "0")
@@ -250,16 +248,40 @@ outer:
 				W: int32(cmd.ClipRect.W),
 				H: int32(cmd.ClipRect.H),
 			}
+
+			// check for negative cliprect coordinates and adjust accordingly;
+			// necessary for rendering to work on Metal right now; see
+			// https://discourse.libsdl.org/t/rendergeometryraw-producing-different-results-in-metal-vs-opengl/34953/6
+			if clipRect.X < 0 {
+				clipRect.W += clipRect.H
+				clipRect.X = 0
+			}
+			if clipRect.Y < 0 {
+				clipRect.H += clipRect.Y
+				clipRect.Y = 0
+			}
+
 			if err = renderer.SetClipRect(&clipRect); err != nil {
 				err = fmt.Errorf("setting renderer clip rectangle: %w", err)
 				return false
 			}
 
+			// the easy way
 			texture := (*sdl.Texture)(unsafe.Pointer(cmd.Texture))
 			if err = renderer.RenderGeometry(texture, vertices, indices[:cmd.ElemCount]); err != nil {
 				err = fmt.Errorf("rendering raw geometry: %w", err)
 				return false
 			}
+
+			// the hard way, works on go-sdl2 >= v0.4.16
+			// xy := &vertices[0].Position.X
+			// color := &vertices[0].Color
+			// uv := &vertices[0].TexCoord.X
+			// if err = renderer.RenderGeometryRaw(texture, xy, sizeofVertex, color, sizeofVertex, uv, sizeofVertex,
+			// 	len(vertices), indices[:cmd.ElemCount]); err != nil {
+			// 	err = fmt.Errorf("rendering raw geometry: %w", err)
+			// 	return false
+			// }
 
 			indices = indices[cmd.ElemCount:]
 			return true
