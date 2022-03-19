@@ -1,4 +1,4 @@
-module github.com/kbolino/go-nk-sdl
+module github.com/kbolino/go-nksdl
 
 go 1.18
 

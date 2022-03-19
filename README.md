@@ -1,4 +1,4 @@
-# go-nk-sdl
+# go-nksdl
 
 A bridge between [go-nk][go-nk] and [go-sdl2][go-sdl2], using the SDL2 renderer.
 
