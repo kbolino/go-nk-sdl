@@ -1,5 +1,12 @@
 # Change Log
 
+## v0.3.0 (2022-03-23)
+
+- Breaking API change: `Driver.PreGUI` has been dropped and `Driver.SetUIScale`
+  has been renamed to `Driver.SetRenderScale`. The reason for this change is
+  that setting the render scale in the middle of the frame had undesirable
+  results.
+
 ## v0.2.1 (2022-03-23)
 
 - Bug fix: Renderer scale was being "restored" to 0x0

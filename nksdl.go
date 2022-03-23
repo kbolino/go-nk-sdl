@@ -34,10 +34,9 @@ type Driver struct {
 	elements    *nk.Buffer
 	vertices    *nk.Buffer
 
-	uiScale        float32   // desired UI scale
-	scaleX, scaleY float32   // previous render scale
-	bgColor        sdl.Color // desired background color
-	clampClipRect  bool      // whether to clamp clip rects
+	renderScale   float32   // desired render scale
+	bgColor       sdl.Color // desired background color
+	clampClipRect bool      // whether to clamp clip rects
 }
 
 // NewDriver creates a new Driver from the given parameters. The sdlDriver and
@@ -60,7 +59,7 @@ func NewDriver(
 		nkDriver:      nkDriver,
 		eventListener: eventListener,
 		eventHandler:  NewEventHandler(bindings),
-		uiScale:       1,
+		renderScale:   1,
 		bgColor:       sdl.Color{R: 0, G: 0, B: 0, A: 255},
 	}
 }
@@ -81,24 +80,28 @@ func (d *Driver) BGColor() sdl.Color {
 	return d.bgColor
 }
 
+// SetBGColor sets the desired background color when clearing the renderer.
 func (d *Driver) SetBGColor(color sdl.Color) {
 	d.bgColor = color
 }
 
-func (d *Driver) UIScale() float32 {
-	return d.uiScale
+func (d *Driver) RenderScale() float32 {
+	return d.renderScale
 }
 
-func (d *Driver) SetUIScale(uiScale float32) error {
-	if uiScale != uiScale || uiScale < 0 || uiScale > 5 {
-		return fmt.Errorf("uiScale(%g) is out of bounds", uiScale)
+// SetRenderScale sets the desired rendering scale. To compute the scale
+// automatically (e.g. on a high-DPI display), use a renderScale of 0.
+func (d *Driver) SetRenderScale(renderScale float32) error {
+	// x != x means x is NaN
+	if renderScale != renderScale || renderScale < 0 || renderScale > 5 {
+		return fmt.Errorf("renderScale(%g) is out of bounds", renderScale)
 	}
-	if uiScale == 0 {
+	if renderScale == 0 {
 		if err := d.computeUIScale(); err != nil {
 			return fmt.Errorf("computing UI scale: %w", err)
 		}
 	} else {
-		d.uiScale = uiScale
+		d.renderScale = renderScale
 	}
 	return nil
 }
@@ -161,8 +164,8 @@ func (d *Driver) Init() error {
 }
 
 // FrameStart performs early frame actions, including polling for events,
-// mapping input events to actions, and clearing the renderer. FrameStart should
-// be called once at the beginning of every frame.
+// mapping input events to actions, as well as scaling and clearing the
+// renderer. FrameStart should be called once at the beginning of every frame.
 func (d *Driver) FrameStart() error {
 	d.context.Clear()
 	d.context.InputBegin()
@@ -184,10 +187,13 @@ func (d *Driver) FrameStart() error {
 	if !alive {
 		return ErrQuit
 	}
-	if d.scaleX != 0 && d.scaleY != 0 {
-		if err := d.renderer.SetScale(d.scaleX, d.scaleY); err != nil {
-			return fmt.Errorf("restoring renderer scale to %g x %g: %w", d.scaleX, d.scaleY, err)
-		}
+	if d.renderScale > 1.5 {
+		d.context.StyleSetFont(d.largeFont.Handle())
+	} else {
+		d.context.StyleSetFont(d.font.Handle())
+	}
+	if err := d.renderer.SetScale(d.renderScale, d.renderScale); err != nil {
+		return fmt.Errorf("setting renderer scale to %g: %w", d.renderScale, err)
 	}
 	oldR, oldG, oldB, oldA, err := d.renderer.GetDrawColor()
 	if err != nil {
@@ -201,22 +207,6 @@ func (d *Driver) FrameStart() error {
 	}
 	if err := d.renderer.SetDrawColor(oldR, oldG, oldB, oldA); err != nil {
 		err = fmt.Errorf("restoring renderer draw color: %w", err)
-	}
-	return nil
-}
-
-// PreGUI performs actions necessary to draw the GUI, including setting the
-// correct font and scaling the renderer for the UI. PreGUI should be called
-// once each frame, after conventional rendering and before GUI operations.
-func (d *Driver) PreGUI() error {
-	if d.uiScale > 1.5 {
-		d.context.StyleSetFont(d.largeFont.Handle())
-	} else {
-		d.context.StyleSetFont(d.font.Handle())
-	}
-	d.scaleX, d.scaleY = d.renderer.GetScale()
-	if err := d.renderer.SetScale(d.uiScale, d.uiScale); err != nil {
-		return fmt.Errorf("setting renderer scale to %g: %w", d.uiScale, err)
 	}
 	return nil
 }
@@ -338,7 +328,7 @@ func (d *Driver) bakeFont() (nk.DrawNullTexture, error) {
 	if err = d.fontTex.SetBlendMode(sdl.BLENDMODE_BLEND); err != nil {
 		return nk.DrawNullTexture{}, fmt.Errorf("setting texture blend mode: %w", err)
 	}
-	d.font.ScaleHeight(d.uiScale)
+	d.font.ScaleHeight(d.renderScale)
 	null := d.atlas.End(textureToHandle(d.fontTex))
 	d.atlas.Cleanup()
 	return null, nil
@@ -357,7 +347,7 @@ func (d *Driver) computeUIScale() error {
 			"display is scaled inconsistently (%f x %f)",
 			renderScaleX, renderScaleY)
 	}
-	d.uiScale = renderScaleY
+	d.renderScale = renderScaleY
 	return nil
 }
 

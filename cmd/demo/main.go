@@ -77,8 +77,8 @@ func run() (err error) {
 		}
 	}()
 	nkc := driver.Context()
-	if err := driver.SetUIScale(0); err != nil {
-		return fmt.Errorf("setting UI scale: %w", err)
+	if err := driver.SetRenderScale(0); err != nil {
+		return fmt.Errorf("setting render scale: %w", err)
 	}
 	driver.SetBGColor(sdl.Color{R: 31, B: 31, G: 31, A: 255})
 	checked := false
@@ -87,12 +87,6 @@ func run() (err error) {
 			break
 		} else if err != nil {
 			return fmt.Errorf("error in driver.FrameStart: %w", err)
-		}
-
-		// conventional rendering operations would go here
-
-		if err := driver.PreGUI(); err != nil {
-			return fmt.Errorf("error in driver.PreGUI: %w", err)
 		}
 
 		if nkc.Begin("Demo",
