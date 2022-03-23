@@ -217,6 +217,7 @@ func (d *Driver) PostRender() (err error) {
 	if err = d.context.Convert(d.commands, d.vertices, d.elements, d.convertConf); err != nil {
 		return fmt.Errorf("converting render commands: %w", err)
 	}
+	oldClipRect := d.renderer.GetClipRect()
 	viewport := d.renderer.GetViewport()
 	indices := reinterpretSlice[int32](d.elements.Memory(), 4)
 	vertices := reinterpretSlice[sdl.Vertex](d.vertices.Memory(), int(vertexSize))
@@ -263,6 +264,9 @@ func (d *Driver) PostRender() (err error) {
 	})
 	if err != nil {
 		return fmt.Errorf("error in context.DrawForEach: %w", err)
+	}
+	if err := d.renderer.SetClipRect(&oldClipRect); err != nil {
+		return fmt.Errorf("restoring clip rect: %w", err)
 	}
 	d.renderer.Present()
 	return nil
