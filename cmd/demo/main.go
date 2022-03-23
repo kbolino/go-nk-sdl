@@ -83,10 +83,16 @@ func run() (err error) {
 	driver.SetBGColor(sdl.Color{R: 31, B: 31, G: 31, A: 255})
 	checked := false
 	for {
-		if err := driver.PreRender(); err == nksdl.ErrQuit {
+		if err := driver.FrameStart(); err == nksdl.ErrQuit {
 			break
 		} else if err != nil {
-			return fmt.Errorf("error in driver.PreRender: %w", err)
+			return fmt.Errorf("error in driver.FrameStart: %w", err)
+		}
+
+		// conventional rendering operations would go here
+
+		if err := driver.PreGUI(); err != nil {
+			return fmt.Errorf("error in driver.PreGUI: %w", err)
 		}
 
 		if nkc.Begin("Demo",
@@ -102,8 +108,8 @@ func run() (err error) {
 		}
 		nkc.End()
 
-		if err := driver.PostRender(); err != nil {
-			return fmt.Errorf("error in driver.PostRender: %w", err)
+		if err := driver.FrameEnd(); err != nil {
+			return fmt.Errorf("error in driver.FrameEnd: %w", err)
 		}
 	}
 	return nil

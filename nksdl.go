@@ -34,9 +34,10 @@ type Driver struct {
 	elements    *nk.Buffer
 	vertices    *nk.Buffer
 
-	uiScale       float32
-	bgColor       sdl.Color
-	clampClipRect bool
+	uiScale        float32   // desired UI scale
+	scaleX, scaleY float32   // previous render scale
+	bgColor        sdl.Color // desired background color
+	clampClipRect  bool      // whether to clamp clip rects
 }
 
 // NewDriver creates a new Driver from the given parameters. The sdlDriver and
@@ -60,6 +61,7 @@ func NewDriver(
 		eventListener: eventListener,
 		eventHandler:  NewEventHandler(bindings),
 		uiScale:       1,
+		bgColor:       sdl.Color{R: 0, G: 0, B: 0, A: 255},
 	}
 }
 
@@ -75,8 +77,16 @@ func (d *Driver) Context() *nk.Context {
 	return d.context
 }
 
+func (d *Driver) BGColor() sdl.Color {
+	return d.bgColor
+}
+
 func (d *Driver) SetBGColor(color sdl.Color) {
 	d.bgColor = color
+}
+
+func (d *Driver) UIScale() float32 {
+	return d.uiScale
 }
 
 func (d *Driver) SetUIScale(uiScale float32) error {
@@ -95,7 +105,7 @@ func (d *Driver) SetUIScale(uiScale float32) error {
 
 // Init initializes the Driver, creating the SDL window and renderer as well
 // as the Nuklear context and fonts. Init should be called once in the lifetime
-// of a Driver, before any calls to PreRender.
+// of a Driver, before any calls to FrameStart.
 func (d *Driver) Init() error {
 	var err error
 	defer func() {
@@ -150,10 +160,10 @@ func (d *Driver) Init() error {
 	return nil
 }
 
-// PreRender preforms early render phase actions, including polling for events,
-// mapping input events to actions, and clearing the renderer. PreRender should
+// FrameStart performs early frame actions, including polling for events,
+// mapping input events to actions, and clearing the renderer. FrameStart should
 // be called once at the beginning of every frame.
-func (d *Driver) PreRender() (err error) {
+func (d *Driver) FrameStart() error {
 	d.context.Clear()
 	d.context.InputBegin()
 	defer d.context.InputEnd()
@@ -161,7 +171,7 @@ func (d *Driver) PreRender() (err error) {
 	for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 		eventType, usedByNuklear := d.eventHandler.HandleEvent(d.context, event)
 		if d.eventListener != nil {
-			if err = d.eventListener(event, eventType, usedByNuklear); err == ErrQuit {
+			if err := d.eventListener(event, eventType, usedByNuklear); err == ErrQuit {
 				alive = false
 			} else if err != nil {
 				return fmt.Errorf("passing event %#v to event listener: %w", event, err)
@@ -174,43 +184,46 @@ func (d *Driver) PreRender() (err error) {
 	if !alive {
 		return ErrQuit
 	}
-	var oldR, oldG, oldB, oldA uint8
-	if oldR, oldG, oldB, oldA, err = d.renderer.GetDrawColor(); err != nil {
+	if err := d.renderer.SetScale(d.scaleX, d.scaleY); err != nil {
+		return fmt.Errorf("restoring renderer scale to %g x %g: %w", d.scaleX, d.scaleY, err)
+	}
+	oldR, oldG, oldB, oldA, err := d.renderer.GetDrawColor()
+	if err != nil {
 		return fmt.Errorf("getting renderer draw color: %w", err)
 	}
-	defer func() {
-		if err2 := d.renderer.SetDrawColor(oldR, oldG, oldB, oldA); err2 != nil && err == nil {
-			err = fmt.Errorf("restoring renderer draw color: %w", err)
-		}
-	}()
-	if err = d.renderer.SetDrawColor(d.bgColor.R, d.bgColor.G, d.bgColor.B, d.bgColor.A); err != nil {
+	if err := d.renderer.SetDrawColor(d.bgColor.R, d.bgColor.G, d.bgColor.B, d.bgColor.A); err != nil {
 		return fmt.Errorf("setting renderer draw color: %w", err)
 	}
-	if err = d.renderer.Clear(); err != nil {
+	if err := d.renderer.Clear(); err != nil {
 		return fmt.Errorf("clearing renderer: %w", err)
 	}
+	if err := d.renderer.SetDrawColor(oldR, oldG, oldB, oldA); err != nil {
+		err = fmt.Errorf("restoring renderer draw color: %w", err)
+	}
+	return nil
+}
+
+// PreGUI performs actions necessary to draw the GUI, including setting the
+// correct font and scaling the renderer for the UI. PreGUI should be called
+// once each frame, after conventional rendering and before GUI operations.
+func (d *Driver) PreGUI() error {
 	if d.uiScale > 1.5 {
 		d.context.StyleSetFont(d.largeFont.Handle())
 	} else {
 		d.context.StyleSetFont(d.font.Handle())
 	}
+	d.scaleX, d.scaleY = d.renderer.GetScale()
+	if err := d.renderer.SetScale(d.uiScale, d.uiScale); err != nil {
+		return fmt.Errorf("setting renderer scale to %g: %w", d.uiScale, err)
+	}
 	return nil
 }
 
-// PostRender performs late render phase actions, including scaling the renderer
-// for the UI, converting UI draw commands to vertex buffer draw commands,
-// passing the vertex buffers to the renderer, and presenting the renderer.
-// PostRender should be called once at the end of every frame.
-func (d *Driver) PostRender() (err error) {
-	scaleX, scaleY := d.renderer.GetScale()
-	if err = d.renderer.SetScale(d.uiScale, d.uiScale); err != nil {
-		return fmt.Errorf("setting renderer scale to %g: %w", d.uiScale, err)
-	}
-	defer func() {
-		if err2 := d.renderer.SetScale(scaleX, scaleY); err2 != nil && err == nil {
-			err = fmt.Errorf("restoring renderer scale to %g x %g: %w", scaleX, scaleY, err)
-		}
-	}()
+// FrameEnd performs late frame actions, including converting UI draw commands
+// to vertex buffer draw commands, passing the vertex buffers to the renderer,
+// and presenting the renderer. FrameEnd should be called once at the end of
+// every frame.
+func (d *Driver) FrameEnd() (err error) {
 	d.commands.Clear()
 	d.elements.Clear()
 	d.vertices.Clear()
@@ -265,7 +278,7 @@ func (d *Driver) PostRender() (err error) {
 	if err != nil {
 		return fmt.Errorf("error in context.DrawForEach: %w", err)
 	}
-	if err := d.renderer.SetClipRect(&oldClipRect); err != nil {
+	if err = d.renderer.SetClipRect(&oldClipRect); err != nil {
 		return fmt.Errorf("restoring clip rect: %w", err)
 	}
 	d.renderer.Present()
@@ -273,7 +286,7 @@ func (d *Driver) PostRender() (err error) {
 }
 
 // Destroy fress resources used by the Driver. Destroy should be called once
-// in the lifetime of a Driver, after the last call to PostRender.
+// in the lifetime of a Driver, after the last call to FrameEnd.
 func (d *Driver) Destroy() (err error) {
 	defer sdl.Quit()
 	defer func() {
