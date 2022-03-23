@@ -1,5 +1,9 @@
 # Change Log
 
+## v0.2.1 (2022-03-23)
+
+- Bug fix: Renderer scale was being "restored" to 0x0
+
 ## v0.2.0 (2022-03-23)
 
 - Breaking API change: Dropped methods `Driver.PreRender` and

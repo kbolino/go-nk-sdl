@@ -184,8 +184,10 @@ func (d *Driver) FrameStart() error {
 	if !alive {
 		return ErrQuit
 	}
-	if err := d.renderer.SetScale(d.scaleX, d.scaleY); err != nil {
-		return fmt.Errorf("restoring renderer scale to %g x %g: %w", d.scaleX, d.scaleY, err)
+	if d.scaleX != 0 && d.scaleY != 0 {
+		if err := d.renderer.SetScale(d.scaleX, d.scaleY); err != nil {
+			return fmt.Errorf("restoring renderer scale to %g x %g: %w", d.scaleX, d.scaleY, err)
+		}
 	}
 	oldR, oldG, oldB, oldA, err := d.renderer.GetDrawColor()
 	if err != nil {
