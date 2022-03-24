@@ -270,7 +270,11 @@ func (d *Driver) FrameEnd() (err error) {
 	if err != nil {
 		return fmt.Errorf("error in context.DrawForEach: %w", err)
 	}
-	if err = d.renderer.SetClipRect(&oldClipRect); err != nil {
+	restoreClipRect := &oldClipRect
+	if restoreClipRect.Empty() {
+		restoreClipRect = nil
+	}
+	if err = d.renderer.SetClipRect(restoreClipRect); err != nil {
 		return fmt.Errorf("restoring clip rect: %w", err)
 	}
 	d.renderer.Present()

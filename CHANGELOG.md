@@ -1,5 +1,11 @@
 # Change Log
 
+## v0.3.1 (2022-03-24)
+
+- Bug fix: If old clipping rectangle is empty, it means clipping is disabled,
+  but restoring to an empty cliprect does not behave the same on all renderers;
+  instead, the cliprect should be set to `nil` when clipping is disabled
+
 ## v0.3.0 (2022-03-23)
 
 - Breaking API change: `Driver.PreGUI` has been dropped and `Driver.SetUIScale`
