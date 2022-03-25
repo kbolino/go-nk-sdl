@@ -80,9 +80,21 @@ func run() (err error) {
 	if err := driver.SetRenderScale(0); err != nil {
 		return fmt.Errorf("setting render scale: %w", err)
 	}
-	driver.SetBGColor(sdl.Color{R: 31, B: 31, G: 31, A: 255})
+	color := nk.Colorf{R: 0.25, B: 0.25, G: 0.25, A: 1}
 	checked := false
+	option := false
+	slide := float32(0)
+	editBuf := make([]byte, 256)
+	editLen := 0
 	for {
+		driver.SetBGColor(
+			sdl.Color{
+				R: uint8(color.R * 255),
+				B: uint8(color.B * 255),
+				G: uint8(color.G * 255),
+				A: uint8(color.A * 255),
+			},
+		)
 		if err := driver.FrameStart(); err == nksdl.ErrQuit {
 			break
 		} else if err != nil {
@@ -90,15 +102,30 @@ func run() (err error) {
 		}
 
 		if nkc.Begin("Demo",
-			&nk.Rect{X: 50, Y: 50, W: 230, H: 250},
+			&nk.Rect{X: 50, Y: 50, W: 230, H: 400},
 			nk.WindowBorder|nk.WindowMovable|nk.WindowScalable|nk.WindowMinimizable|nk.WindowTitle,
 		) {
 			nkc.LayoutRowStatic(30, 81, 1)
 			if nkc.ButtonText("Button") {
 				fmt.Println("button pressed")
 			}
-			nkc.LayoutRowStatic(30, 80, 1)
+			nkc.LayoutRowDynamic(20, 1)
 			checked = nkc.CheckText("Check me", checked)
+			nkc.LayoutRowDynamic(20, 2)
+			option = !nkc.OptionText("Option A", !option)
+			option = nkc.OptionText("Option B", option)
+			nkc.LayoutRowDynamic(20, 1)
+			slide = nkc.SlideFloat(0, slide, 1, 0.1)
+			nkc.LayoutRowDynamic(60, 1)
+			color = nkc.ColorPicker(color, nk.RGBA)
+			nkc.LayoutRowDynamic(30, 1)
+			var editEvents nk.EditEvents
+			editLen, editEvents = nkc.EditString(nk.EditSimple, editBuf, editLen, nk.FilterDefault)
+			if editEvents&nk.EditCommited == nk.EditCommited {
+				fmt.Println("text edit committed:", string(editBuf[:editLen]))
+			} else if editEvents&nk.EditDeactivated == nk.EditDeactivated {
+				fmt.Println("text edit deactivated:", string(editBuf[:editLen]))
+			}
 		}
 		nkc.End()
 

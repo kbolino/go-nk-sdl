@@ -1,5 +1,10 @@
 # Change Log
 
+## v0.4.0 (2022-03-25)
+
+- Breaking API change: Updated go-nk to v0.15.0
+- Added some of the new widgets to the demo
+
 ## v0.3.1 (2022-03-24)
 
 - Bug fix: If old clipping rectangle is empty, it means clipping is disabled,

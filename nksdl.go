@@ -150,7 +150,8 @@ func (d *Driver) Init() error {
 	if d.null, err = d.bakeFont(); err != nil {
 		return fmt.Errorf("baking font: %w", err)
 	}
-	d.largeFont.ScaleHeight(2)
+	largeFontHandle := d.largeFont.Handle()
+	largeFontHandle.SetHeight(largeFontHandle.Height() / 2)
 	d.convertConf = d.nkDriver.CreateConvertConfig(
 		vertexLayout,
 		uint32(vertexSize),
@@ -232,9 +233,9 @@ func (d *Driver) FrameEnd() (err error) {
 		}
 
 		clipRect := sdl.Rect{
-			X: int32(cmd.ClipRect.X),
+			X: int32(cmd.ClipRect.X) - 1,
 			Y: int32(cmd.ClipRect.Y),
-			W: int32(cmd.ClipRect.W),
+			W: int32(cmd.ClipRect.W) + 2,
 			H: int32(cmd.ClipRect.H),
 		}
 
@@ -332,7 +333,6 @@ func (d *Driver) bakeFont() (nk.DrawNullTexture, error) {
 	if err = d.fontTex.SetBlendMode(sdl.BLENDMODE_BLEND); err != nil {
 		return nk.DrawNullTexture{}, fmt.Errorf("setting texture blend mode: %w", err)
 	}
-	d.font.ScaleHeight(d.renderScale)
 	null := d.atlas.End(textureToHandle(d.fontTex))
 	d.atlas.Cleanup()
 	return null, nil
